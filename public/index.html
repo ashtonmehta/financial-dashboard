@@ -4,43 +4,43 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Financial Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,500;6..72,600;6..72,700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<header class="topbar">
-  <h1>Financial Dashboard</h1>
+<div class="page-wrap">
   <nav class="tabs" role="tablist">
     <button class="tab active" data-tab="overview" role="tab">Overview</button>
     <button class="tab" data-tab="paycheck" role="tab">Paycheck flow</button>
     <button class="tab" data-tab="spending" role="tab">Spending</button>
   </nav>
-</header>
 
-<main>
   <!-- ============ OVERVIEW ============ -->
   <section id="tab-overview" class="tab-panel active">
-    <div class="section-label">Net worth</div>
-    <div class="hero">
-      <div class="hero-total" id="nw-total">$0</div>
-      <div class="hero-subs">
-        <div class="hero-sub"><span class="k">Cash</span><span class="v" id="nw-cash">$0</span></div>
-        <div class="hero-sub"><span class="k">Investments</span><span class="v" id="nw-invest">$0</span></div>
-        <div class="hero-sub"><span class="k">Credit cards</span><span class="v neg" id="nw-debt">$0</span></div>
+    <div class="net-hero">
+      <div class="section-label">Net worth</div>
+      <div class="net-number" id="nw-total">$0</div>
+      <div class="net-stats">
+        <div class="net-stat"><span class="k">Cash</span><span class="v" id="nw-cash">$0</span></div>
+        <div class="net-stat"><span class="k">Investments</span><span class="v" id="nw-invest">$0</span></div>
+        <div class="net-stat"><span class="k">Credit cards</span><span class="v neg" id="nw-debt">$0</span></div>
       </div>
+      <div class="allocation" id="allocation"></div>
     </div>
 
     <div class="section-label">Accounts by institution</div>
     <div id="accounts"></div>
 
     <div class="section-label">Net worth over time</div>
-    <div class="card chart-card"><svg id="nw-chart" viewBox="0 0 720 220" preserveAspectRatio="none" aria-label="Net worth trend"></svg></div>
+    <div class="chart-card"><svg id="nw-chart" viewBox="0 0 720 240" role="img" aria-label="Net worth trend"></svg></div>
   </section>
 
   <!-- ============ PAYCHECK FLOW ============ -->
   <section id="tab-paycheck" class="tab-panel">
     <div class="section-label">Paycheck flow</div>
-    <div class="flow" id="flow"></div>
-    <div class="card flow-detail" id="flow-detail"></div>
+    <div class="flow-sheet" id="flow"></div>
 
     <div class="section-label">Recurring payments</div>
     <div class="card"><ul class="line-list" id="recurring-paycheck"></ul></div>
@@ -58,13 +58,10 @@
       </label>
     </div>
 
-    <div class="card" id="budget-bars"></div>
+    <div class="budget-grid" id="budget-bars"></div>
 
     <div class="section-label">Transactions</div>
-    <div class="card"><table class="tx-table">
-      <thead><tr><th>Date</th><th>Description</th><th>Account</th><th>Category</th><th class="num">Amount</th><th></th></tr></thead>
-      <tbody id="tx-body"></tbody>
-    </table></div>
+    <div id="tx-list"></div>
 
     <div class="section-label">Owed to you</div>
     <div class="card"><ul class="line-list" id="owed-list"></ul></div>
@@ -72,24 +69,12 @@
     <div class="section-label">Recurring payments</div>
     <div class="card"><ul class="line-list" id="recurring-spending"></ul></div>
   </section>
-</main>
+</div>
 
 <div class="menu hidden" id="row-menu">
   <button data-action="share">Set share</button>
   <button data-action="ignore">Ignore</button>
   <button data-action="include">Include in totals</button>
-</div>
-
-<div class="modal hidden" id="share-modal">
-  <div class="modal-box">
-    <h3>Set your share</h3>
-    <p class="modal-sub" id="share-modal-sub"></p>
-    <label>Your share ($) <input type="number" id="share-input" min="0" step="0.01"></label>
-    <div class="modal-actions">
-      <button id="share-cancel">Cancel</button>
-      <button id="share-save" class="primary">Save</button>
-    </div>
-  </div>
 </div>
 
 <script src="app.js"></script>

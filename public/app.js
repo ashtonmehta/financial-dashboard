@@ -35,6 +35,7 @@ function save(){
 
 const fmt = n => (n<0?"−$":"$") + Math.abs(n).toLocaleString("en-US",{minimumFractionDigits:2, maximumFractionDigits:2});
 const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* ---------- tabs ---------- */
 document.querySelectorAll(".tab").forEach(btn => btn.addEventListener("click", () => {
@@ -52,26 +53,50 @@ function totals(){
   }
   return { cash, invest, debt, net: cash+invest-debt };
 }
+const markClass = t => t==="credit" ? "mark-debt" : (t==="investment" ? "mark-invest" : "mark-cash");
+
 function renderOverview(){
   const t = totals();
   $("nw-total").textContent = fmt(t.net);
   $("nw-cash").textContent = fmt(t.cash);
   $("nw-invest").textContent = fmt(t.invest);
   $("nw-debt").textContent = "−" + fmt(t.debt);
+  const grossTotal = t.cash + t.invest + t.debt || 1;
+  $("allocation").innerHTML =
+    `<div class="seg-cash" style="width:${t.cash/grossTotal*100}%"></div>` +
+    `<div class="seg-invest" style="width:${t.invest/grossTotal*100}%"></div>` +
+    `<div class="seg-debt" style="width:${t.debt/grossTotal*100}%"></div>`;
+
   const byInst = {};
   for (const a of DATA.accounts){ (byInst[a.institution] = byInst[a.institution]||[]).push(a); }
-  $("accounts").innerHTML = Object.entries(byInst).map(([inst, accts]) => `
-    <div class="card inst"><h3>${inst}</h3>
-    ${accts.map(a => `<div class="acct-row"><span>${a.name} <span class="mask">··${a.mask}</span></span><span class="bal">${a.type==="credit" ? "−"+fmt(a.balance) : fmt(a.balance)}</span></div>`).join("")}
-    </div>`).join("");
-  const pts = DATA.snapshots, W=720, H=220, P=14;
-  const vals = pts.map(p=>p.net), min = Math.min(...vals)*0.98, max = Math.max(...vals)*1.01;
-  const X = i => P + i*(W-2*P)/(pts.length-1), Y = v => H-P - (v-min)*(H-2*P)/(max-min);
+  $("accounts").innerHTML = Object.entries(byInst).map(([inst, accts]) => {
+    const total = accts.reduce((s,a)=> s + (a.type==="credit" ? -a.balance : a.balance), 0);
+    return `<div class="inst-card">
+      <div class="inst-head"><h3>${esc(inst)}</h3><span class="inst-total">${fmt(total)}</span></div>
+      ${accts.map(a => `<div class="acct-row"><span class="acct-mark ${markClass(a.type)}"></span><span>${esc(a.name)} <span class="mask">··${esc(a.mask)}</span></span><span class="bal">${a.type==="credit" ? "−"+fmt(a.balance) : fmt(a.balance)}</span></div>`).join("")}
+    </div>`;
+  }).join("");
+
+  // trend chart — accent gradient area, dashed grid, axes
+  const pts = DATA.snapshots, W=720, H=240, PL=58, PR=12, PT=12, PB=26;
+  const vals = pts.map(p=>p.net);
+  let min = Math.min(...vals), max = Math.max(...vals);
+  const pad = (max-min)*0.15 || 1000; min -= pad; max += pad;
+  const X = i => PL + i*(W-PL-PR)/(pts.length-1);
+  const Y = v => PT + (max-v)*(H-PT-PB)/(max-min);
   const line = pts.map((p,i)=>`${X(i)},${Y(p.net)}`).join(" ");
+  const gridVals = [0,1,2,3].map(i => min + (max-min)*i/3);
   $("nw-chart").innerHTML = `
-    <polygon points="${P},${H-P} ${line} ${W-P},${H-P}" fill="rgba(37,99,235,.12)"></polygon>
-    <polyline points="${line}" fill="none" stroke="#2563eb" stroke-width="2.5"></polyline>
-    ${pts.map((p,i)=>`<circle cx="${X(i)}" cy="${Y(p.net)}" r="4" fill="#2563eb"><title>${p.date}: ${fmt(p.net)}</title></circle>`).join("")}`;
+    <defs><linearGradient id="nwg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0d6b43" stop-opacity="0.28"></stop>
+      <stop offset="100%" stop-color="#0d6b43" stop-opacity="0.02"></stop>
+    </linearGradient></defs>
+    ${gridVals.map(v => `<line x1="${PL}" x2="${W-PR}" y1="${Y(v)}" y2="${Y(v)}" stroke="#dbe2db" stroke-dasharray="4 4"></line>
+      <text x="${PL-8}" y="${Y(v)+4}" text-anchor="end" font-size="11" fill="#87928b">$${Math.round(v/1000)}k</text>`).join("")}
+    <polygon points="${PL},${H-PB} ${line} ${W-PR},${H-PB}" fill="url(#nwg)"></polygon>
+    <polyline points="${line}" fill="none" stroke="#0d6b43" stroke-width="2.5"></polyline>
+    ${pts.map((p,i)=>`<circle cx="${X(i)}" cy="${Y(p.net)}" r="3.5" fill="#0d6b43"><title>${p.date}: ${fmt(p.net)}</title></circle>
+      <text x="${X(i)}" y="${H-6}" text-anchor="middle" font-size="11" fill="#87928b">${p.date.slice(0,7)}</text>`).join("")}`;
 }
 
 /* ---------- paycheck flow ---------- */
@@ -81,30 +106,29 @@ function renderPaycheck(){
   const retirement = p.pretax.amount + p.aftertax.amount;
   const takeHome = p.gross - retirement - taxTotal;
   const branches = [
-    { key:"ret", t:"Retirement", a:retirement, detail:`<h4>Retirement — ${fmt(retirement)}</h4><ul><li>${p.pretax.label} (${p.pretax.pct}%): ${fmt(p.pretax.amount)}</li><li>${p.aftertax.label} (${p.aftertax.pct}%): ${fmt(p.aftertax.amount)}</li></ul>` },
-    { key:"tax", t:"Taxes withheld", a:taxTotal, detail:`<h4>Taxes withheld — ${fmt(taxTotal)}</h4><ul>${p.taxes.map(t=>`<li>${t.label}: ${fmt(t.amount)}</li>`).join("")}</ul>` },
-    { key:"home", t:"Take-home", a:takeHome, detail:`<h4>Take-home — ${fmt(takeHome)}</h4><ul><li>Deposited to ${p.depositTo}</li><li>${p.frequency} pay</li></ul>` }
+    { key:"ret", t:"Retirement", a:retirement, detail:`<h4>Retirement — ${fmt(retirement)}</h4><ul><li>${esc(p.pretax.label)} (${p.pretax.pct}%): ${fmt(p.pretax.amount)}</li><li>${esc(p.aftertax.label)} (${p.aftertax.pct}%): ${fmt(p.aftertax.amount)}</li></ul>` },
+    { key:"tax", t:"Taxes withheld", a:taxTotal, detail:`<h4>Taxes withheld — ${fmt(taxTotal)}</h4><ul>${p.taxes.map(t=>`<li>${esc(t.label)}: ${fmt(t.amount)}</li>`).join("")}</ul>` },
+    { key:"home", t:"Take-home", a:takeHome, detail:`<h4>Take-home — ${fmt(takeHome)}</h4><ul><li>Deposited to ${esc(p.depositTo)}</li><li>${esc(p.frequency)} pay</li></ul>` }
   ];
   $("flow").innerHTML = `
-    <div class="flow-node selected" data-k="gross"><div class="t">Gross pay</div><div class="a">${fmt(p.gross)}</div></div>
-    <div class="flow-link"></div>
-    <div class="flow-branches">${branches.map(b=>`<div class="flow-node" data-k="${b.key}"><div class="t">${b.t}</div><div class="a">${fmt(b.a)}</div></div>`).join("")}</div>`;
+    <div class="flow-gross"><div class="t">Gross pay</div><div class="a">${fmt(p.gross)}</div></div>
+    <div class="flow-rail"></div>
+    <div class="flow-branches">${branches.map((b,i)=>`<button class="flow-branch ${i===0?"selected":""}" data-k="${b.key}"><div class="t">${b.t}</div><div class="a">${fmt(b.a)}</div></button>`).join("")}</div>
+    <div class="flow-detail" id="flow-detail"></div>`;
   const detail = $("flow-detail");
   const show = k => {
-    detail.innerHTML = k==="gross"
-      ? `<h4>Gross pay — ${fmt(p.gross)}</h4><ul><li>Retirement: ${fmt(retirement)}</li><li>Taxes withheld: ${fmt(taxTotal)}</li><li>Take-home: ${fmt(takeHome)}</li></ul>`
-      : branches.find(b=>b.key===k).detail;
-    document.querySelectorAll(".flow-node").forEach(n => n.classList.toggle("selected", n.dataset.k===k));
+    detail.innerHTML = branches.find(b=>b.key===k).detail;
+    document.querySelectorAll(".flow-branch").forEach(n => n.classList.toggle("selected", n.dataset.k===k));
   };
-  document.querySelectorAll(".flow-node").forEach(n => n.addEventListener("click", ()=>show(n.dataset.k)));
-  show("gross");
+  document.querySelectorAll(".flow-branch").forEach(n => n.addEventListener("click", ()=>show(n.dataset.k)));
+  show("ret");
   renderRecurring();
 }
 
 function monthlyCost(r){ return r.period==="annual" ? r.amount/12 : r.amount; }
 function renderRecurring(){
   const html = DATA.recurring.map(r =>
-    `<li><span>${r.label}</span><span class="amt">${fmt(monthlyCost(r))}/mo</span></li>`).join("") +
+    `<li><span>${esc(r.label)}</span><span class="amt">${fmt(monthlyCost(r))}/mo</span></li>`).join("") +
     `<li class="total"><span>Total</span><span class="amt">${fmt(DATA.recurring.reduce((s,r)=>s+monthlyCost(r),0))}/mo</span></li>`;
   $("recurring-paycheck").innerHTML = html;
   $("recurring-spending").innerHTML = html;
@@ -112,6 +136,7 @@ function renderRecurring(){
 
 /* ---------- spending ---------- */
 let activeCategory = null;
+let editingShareId = null;
 const catOf = tx => state.cats[tx.id] || tx.category;
 const shareOf = tx => (tx.id in state.shares) ? state.shares[tx.id] : tx.amount;
 const isIgnored = tx => state.ignored.includes(tx.id);
@@ -143,40 +168,57 @@ function renderSpending(){
 
   $("budget-bars").innerHTML = CATEGORIES.map(c => {
     const b = DATA.budgets[c]||0, a = act[c], pct = b ? Math.min(100, a/b*100) : 0;
-    return `<div class="bar-row ${activeCategory===c?"active":""}" data-cat="${c}">
-      <span>${c}</span>
-      <span class="bar-track"><span class="bar-fill ${a>b?"over":""}" style="display:block;width:${pct}%"></span></span>
-      <span class="bar-nums"><b>${fmt(a)}</b> / ${fmt(b)}</span></div>`;
+    return `<div class="budget-row ${activeCategory===c?"active":""}" data-cat="${c}">
+      <div class="top"><span>${c}</span><span class="nums"><b>${fmt(a)}</b> / ${fmt(b)}</span></div>
+      <div class="track"><div class="fill ${a>b?"over":""}" style="width:${pct}%"></div></div></div>`;
   }).join("");
-  document.querySelectorAll(".bar-row").forEach(r => r.addEventListener("click", () => {
+  document.querySelectorAll(".budget-row").forEach(r => r.addEventListener("click", () => {
     activeCategory = activeCategory===r.dataset.cat ? null : r.dataset.cat;
     renderSpending();
   }));
 
   const rows = monthTx.filter(tx => !activeCategory || catOf(tx)===activeCategory);
-  $("tx-body").innerHTML = rows.map(tx => `
-    <tr class="${isIgnored(tx)?"ignored":""}">
-      <td>${tx.date.slice(5)}</td>
-      <td>${tx.desc}${tx.id in state.shares ? ` <span style="color:var(--muted)">(your share ${fmt(state.shares[tx.id])})</span>` : ""}</td>
-      <td>${tx.account}</td>
-      <td><select data-tx="${tx.id}">${CATEGORIES.map(c=>`<option ${c===catOf(tx)?"selected":""}>${c}</option>`).join("")}</select></td>
-      <td class="num">${fmt(tx.amount)}</td>
-      <td><button class="dots" data-tx="${tx.id}" aria-label="More actions">⋯</button></td>
-    </tr>`).join("");
-  document.querySelectorAll("#tx-body select").forEach(s => s.addEventListener("change", () => {
+  $("tx-list").innerHTML = rows.map(tx => `
+    <article class="tx-article ${isIgnored(tx)?"ignored":""}">
+      <div class="tx-main">
+        <div><div class="tx-desc">${esc(tx.desc)}${tx.id in state.shares ? ` <span style="color:var(--muted);font-weight:400">(your share ${fmt(state.shares[tx.id])})</span>` : ""}</div>
+        <div class="tx-sub">${tx.date} · ${esc(tx.account)}</div></div>
+        <select data-tx="${tx.id}">${CATEGORIES.map(c=>`<option ${c===catOf(tx)?"selected":""}>${c}</option>`).join("")}</select>
+        <span class="tx-amt">${fmt(tx.amount)}</span>
+        <button class="dots" data-tx="${tx.id}" aria-label="More actions">⋯</button>
+      </div>
+      ${editingShareId===tx.id ? `<div class="share-editor">
+        <label>Your share ($) <input type="number" class="share-input" min="0" step="0.01" value="${shareOf(tx)}"></label>
+        <button class="save" data-tx="${tx.id}">Save</button>
+        <button class="cancel">Cancel</button>
+      </div>` : ""}
+    </article>`).join("");
+  document.querySelectorAll("#tx-list select").forEach(s => s.addEventListener("change", () => {
     state.cats[s.dataset.tx] = s.value; save(); renderSpending();
   }));
   document.querySelectorAll(".dots").forEach(b => b.addEventListener("click", e => { e.stopPropagation(); openMenu(b); }));
+  const saveBtn = document.querySelector(".share-editor .save");
+  if (saveBtn) saveBtn.addEventListener("click", () => {
+    const tx = DATA.transactions.find(t=>t.id===saveBtn.dataset.tx);
+    const v = parseFloat(document.querySelector(".share-editor .share-input").value);
+    if (!isNaN(v) && tx){
+      if (v >= tx.amount) delete state.shares[tx.id]; else state.shares[tx.id] = v;
+      save();
+    }
+    editingShareId = null; renderSpending();
+  });
+  const cancelBtn = document.querySelector(".share-editor .cancel");
+  if (cancelBtn) cancelBtn.addEventListener("click", () => { editingShareId = null; renderSpending(); });
 
   const shareItems = DATA.transactions.filter(tx => tx.id in state.shares && !isIgnored(tx))
     .map(tx => ({ label: tx.desc, amount: tx.amount - state.shares[tx.id] }));
   const allOwed = [...state.owed, ...shareItems];
   $("owed-list").innerHTML = allOwed.map(o =>
-    `<li><span>${o.label}</span><span class="amt">${fmt(o.amount)}</span></li>`).join("") +
+    `<li><span>${esc(o.label)}</span><span class="amt">${fmt(o.amount)}</span></li>`).join("") +
     `<li class="total"><span>Total owed to you</span><span class="amt">${fmt(allOwed.reduce((s,o)=>s+o.amount,0))}</span></li>`;
 }
 
-/* ---------- row menu + share modal ---------- */
+/* ---------- row menu ---------- */
 let menuTx = null;
 function openMenu(btn){
   menuTx = DATA.transactions.find(t=>t.id===btn.dataset.tx);
@@ -190,25 +232,10 @@ function openMenu(btn){
 document.addEventListener("click", () => $("row-menu").classList.add("hidden"));
 $("row-menu").addEventListener("click", e => {
   const a = e.target.dataset.action; if (!a || !menuTx) return;
-  if (a==="ignore"){ state.ignored.push(menuTx.id); }
-  if (a==="include"){ state.ignored = state.ignored.filter(id=>id!==menuTx.id); }
-  if (a==="share"){
-    $("share-modal-sub").textContent = `${menuTx.desc} — ${fmt(menuTx.amount)} total`;
-    $("share-input").value = shareOf(menuTx);
-    $("share-modal").classList.remove("hidden");
-    $("row-menu").classList.add("hidden");
-    return;
-  }
-  save(); renderSpending();
-});
-$("share-cancel").addEventListener("click", () => $("share-modal").classList.add("hidden"));
-$("share-save").addEventListener("click", () => {
-  const v = parseFloat($("share-input").value);
-  if (!isNaN(v) && menuTx){
-    if (v >= menuTx.amount) delete state.shares[menuTx.id]; else state.shares[menuTx.id] = v;
-    save(); renderSpending();
-  }
-  $("share-modal").classList.add("hidden");
+  if (a==="ignore"){ state.ignored.push(menuTx.id); save(); }
+  if (a==="include"){ state.ignored = state.ignored.filter(id=>id!==menuTx.id); save(); }
+  if (a==="share"){ editingShareId = menuTx.id; $("row-menu").classList.add("hidden"); renderSpending(); return; }
+  renderSpending();
 });
 
 /* ---------- fallback sample (only used if the server is unreachable) ---------- */
