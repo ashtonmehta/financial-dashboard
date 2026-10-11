@@ -1,0 +1,1 @@
+{"description":"Personal financial dashboard — net worth, paycheck flow, and spending. Zero-dependency full-stack app.","engines":{"node":">=18"},"name":"financial-dashboard","private":true,"scripts":{"start":"node server.js"},"version":"1.0.0"}
